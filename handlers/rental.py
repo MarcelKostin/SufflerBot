@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 
 import config
 import storage
-from keyboards import duration_keyboard, deposit_keyboard, contact_keyboard, confirm_keyboard
+from keyboards import duration_keyboard, deposit_keyboard, contact_keyboard, confirm_keyboard, services_keyboard
 from states import (
     CHOOSING_SERVICE, ENTERING_DATE, CHOOSING_DURATION, CHOOSING_DEPOSIT,
     ENTERING_CONTACT, CONFIRMING, SERVICE_DAY, SERVICE_HELPER,
@@ -24,11 +24,10 @@ async def choose_service(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data["service"] = service
     context.user_data["service_name"] = SERVICE_NAMES[service]
 
-    await query.edit_message_text(
+    await query.message.reply_html(
         f"Вы выбрали: <b>{SERVICE_NAMES[service]}</b>\n\n"
         "📅 На какую дату нужна аренда? Напишите в формате ДД.ММ.ГГГГ\n"
         "(например: 05.10.2026)",
-        parse_mode="HTML",
     )
     return ENTERING_DATE
 
@@ -69,7 +68,7 @@ async def choose_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     data = query.data
 
     if data == "dur_custom":
-        await query.edit_message_text(
+        await query.message.reply_text(
             "Напишите нужную длительность текстом (например: «2 часа» или «5 часов»)."
         )
         return CHOOSING_DURATION
@@ -81,11 +80,11 @@ async def choose_duration(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data["duration_text"] = f"{hours:g} ч"
     context.user_data["price"] = price
 
-    await query.edit_message_text(
+    await query.message.reply_text(
         f"Длительность: {hours:g} ч, стоимость: {price}₽\n\n"
         "Как оформим залог?",
+        reply_markup=deposit_keyboard(),
     )
-    await query.message.reply_text("Выберите вариант залога:", reply_markup=deposit_keyboard())
     return CHOOSING_DEPOSIT
 
 
@@ -113,8 +112,8 @@ async def choose_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         context.user_data["deposit"] = config.DEPOSIT_ALT_TEXT.capitalize()
 
-    await query.edit_message_text(f"Залог: {context.user_data['deposit']}")
     await query.message.reply_text(
+        f"Залог: {context.user_data['deposit']}\n\n"
         "📞 Оставьте контакт для связи — отправьте номер телефона текстом "
         "или нажмите кнопку ниже.",
         reply_markup=contact_keyboard(),
@@ -166,7 +165,11 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if query.data == "confirm_no":
         context.user_data.clear()
-        await query.edit_message_text("Заявка отменена. Чтобы начать заново — отправьте /start.")
+        await query.message.reply_text("Заявка отменена.")
+        await query.message.reply_html(
+            "Выберите услугу, если хотите оформить новую заявку 👇",
+            reply_markup=services_keyboard(),
+        )
         return ConversationHandler.END
 
     user = update.effective_user
@@ -194,8 +197,13 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     storage.save_reply_mapping(admin_message.message_id, update.effective_chat.id, user.full_name)
 
-    await query.edit_message_text(
+    await query.message.reply_text(
         f"✅ Заявка #{app_id} отправлена! Мы свяжемся с вами для подтверждения встречи."
     )
     context.user_data.clear()
+
+    await query.message.reply_html(
+        "Хотите оформить ещё одну заявку? Выберите услугу 👇",
+        reply_markup=services_keyboard(),
+    )
     return ConversationHandler.END
