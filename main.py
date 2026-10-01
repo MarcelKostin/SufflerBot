@@ -13,6 +13,7 @@ from handlers.rental import (
     choose_deposit, receive_contact, confirm,
 )
 from handlers.admin import admin_reply
+from handlers.chat import forward_to_admin
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -24,7 +25,12 @@ def build_application() -> Application:
     application = ApplicationBuilder().token(config.BOT_TOKEN).build()
 
     rental_conversation = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            # Позволяет начать новую заявку кнопками меню, которое остаётся
+            # после отправки/отмены предыдущей заявки — без повторного /start.
+            CallbackQueryHandler(choose_service, pattern="^service_"),
+        ],
         states={
             CHOOSING_SERVICE: [
                 CallbackQueryHandler(choose_service, pattern="^service_"),
@@ -58,6 +64,16 @@ def build_application() -> Application:
         MessageHandler(
             filters.REPLY & filters.Chat(chat_id=config.ADMIN_ID) & filters.TEXT & ~filters.COMMAND,
             admin_reply,
+        )
+    )
+
+    # Любое свободное текстовое сообщение от клиента (вне сценария оформления
+    # заявки и вне чата самого админа) — пересылаем админу, чтобы переписка
+    # была двусторонней.
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & ~filters.Chat(chat_id=config.ADMIN_ID),
+            forward_to_admin,
         )
     )
 
